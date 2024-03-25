@@ -1,16 +1,21 @@
 #!/bin/bash
 
-# Set the SSH password using an environment variable
-if [ -n "$SSH_PASSWORD" ]; then
-    echo "Adding new user ubuntu..."
-    useradd -m -d /home/ubuntu -s /bin/bash ubuntu
+# Set the SSH username and password using environment variables
+SSH_USERNAME=${SSH_USERNAME:-"ubuntu"}  # Default username is "ubuntu"
+SSH_PASSWORD=${SSH_PASSWORD:-""}        # Default password is empty
 
-    echo "Setting SSH password..."
-    echo "ubuntu:$SSH_PASSWORD" | chpasswd
+if [ -n "$SSH_USERNAME" ]; then
+    echo "Adding new user $SSH_USERNAME..."
+    useradd -m -d /home/$SSH_USERNAME -s /bin/bash $SSH_USERNAME
 
-    # Add 'ubuntu' to the 'sudo' group to grant root privileges
+    if [ -n "$SSH_PASSWORD" ]; then
+        echo "Setting SSH password..."
+        echo "$SSH_USERNAME:$SSH_PASSWORD" | chpasswd
+    fi
+
+    # Add the user to the 'sudo' group to grant root privileges
     echo "Adding sudo privileges"
-    usermod -aG sudo ubuntu
+    usermod -aG sudo $SSH_USERNAME
 fi
 
 # Start SSH server
