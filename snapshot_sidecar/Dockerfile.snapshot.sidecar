@@ -1,0 +1,20 @@
+FROM ubuntu:22.04
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    rsync \
+    curl \
+    ca-certificates \
+    apt-transport-https \
+    gnupg \
+    lsb-release \
+    software-properties-common \
+    docker.io
+
+# Create snapshot script directory
+RUN mkdir -p /app
+WORKDIR /app
+COPY ./snapshot_sidecar/* .
+RUN chmod +x ./snapshot.entrypoint.sh
+
+ENTRYPOINT ["./snapshot.entrypoint.sh"]

@@ -14,7 +14,12 @@ These images are used to build the images for SSH containers that are used in br
   ```
 
 2. Now you should be able to use `make` commands to run the build:
+  <br>
   a. Ubuntu:
     ```bash
     make build_ubuntu
+    ```
+  b. Snapshot Sidecar:
+    ```bash
+    make build_snapshot_sidecar
     ```
