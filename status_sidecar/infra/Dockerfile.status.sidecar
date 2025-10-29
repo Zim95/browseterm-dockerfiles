@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+# Install dependencies
+RUN apt-get update && apt-get install -y build-essential curl
+
+# Create the directory and copy files
+RUN mkdir -p /app
+WORKDIR /app
+COPY ./status_sidecar/ .
+
+# Make entrypoint script executable
+RUN chmod +x ./infra/sidecar.entrypoint.sh
+
+# Install Poetry
+RUN curl -sSL https://install.python-poetry.org | python3 -
+ENV PATH="/root/.local/bin:${PATH}"
+
+# Install dependencies
+RUN poetry install --no-root
+
+# Use the entrypoint script
+ENTRYPOINT ["bash", "-c", "./infra/sidecar.entrypoint.sh"]

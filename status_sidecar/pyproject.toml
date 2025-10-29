@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "status-sidecar"
+version = "0.1.0"
+description = "Sidecar container that returns pod status"
+authors = ["Zim95 <shresthanamah@gmail.com>"]
+license = "Apache 2.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.12"
+kubernetes-asyncio = "^33.3.0"
+browseterm-db = {git = "https://github.com/Zim95/browseterm-db.git", rev = "main"}
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

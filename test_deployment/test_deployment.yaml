@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pod-monitor-sa
+  namespace: browseterm-new
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+  namespace: browseterm-new
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pod-reader-binding
+  namespace: browseterm-new
+subjects:
+- kind: ServiceAccount
+  name: pod-monitor-sa
+  namespace: browseterm-new
+roleRef:
+  kind: Role
+  name: pod-reader
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: linux-container-with-snapshot
+spec:
+  serviceAccountName: pod-monitor-sa
+  volumes:
+    - name: snapshot-volume
+      emptyDir: {}
+    - name: status-sidecar-code
+      hostPath:
+        path: /Users/namahshrestha/projects/browseterm-dockerfiles/status_sidecar
+        type: Directory
+  containers:
+    - name: main-container
+      image: zim95/ssh_ubuntu:latest
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - name: snapshot-volume
+          mountPath: /mnt/snapshot
+      # command or args can include a script to create the tar.gz when needed
+
+    - name: snapshot-sidecar
+      image: zim95/snapshot_sidecar:latest
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - name: snapshot-volume
+          mountPath: /mnt/snapshot
+
+    - name: status-sidecar
+      image: zim95/status_sidecar:latest
+      securityContext:
+        privileged: true
+      env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: CONTAINER_ID
+          value: "${CONTAINER_ID}"
+        - name: DB_HOST
+          value: "${DB_HOST}"
+        - name: DB_PORT
+          value: "${DB_PORT}"
+        - name: DB_USERNAME
+          value: "${DB_USERNAME}"
+        - name: DB_PASSWORD
+          value: "${DB_PASSWORD}"
+        - name: DB_DATABASE
+          value: "${DB_DATABASE}"
+      volumeMounts:
+        - name: snapshot-volume
+          mountPath: /mnt/snapshot
+        - name: status-sidecar-code
+          mountPath: /app
