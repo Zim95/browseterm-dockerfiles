@@ -43,7 +43,7 @@ spec:
         type: Directory
   containers:
     - name: main-container
-      image: zim95/ssh_ubuntu:latest
+      image: ${REPO_NAME}/ssh_ubuntu:latest
       securityContext:
         privileged: true
       volumeMounts:
@@ -52,7 +52,7 @@ spec:
       # command or args can include a script to create the tar.gz when needed
 
     - name: snapshot-sidecar
-      image: zim95/snapshot_sidecar:latest
+      image: ${REPO_NAME}/snapshot_sidecar:latest
       securityContext:
         privileged: true
       volumeMounts:
@@ -60,7 +60,7 @@ spec:
           mountPath: /mnt/snapshot
 
     - name: status-sidecar
-      image: zim95/status_sidecar:latest
+      image: ${REPO_NAME}/status_sidecar:latest
       securityContext:
         privileged: true
       env:
