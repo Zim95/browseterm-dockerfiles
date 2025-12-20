@@ -63,7 +63,6 @@ async def watch_pod_status(callback: Callable) -> None:
                 pod: client.V1Pod = event['object']
                 update_container_status: UpdateContainerStatus = UpdateContainerStatus(
                     container_id=CONTAINER_ID,
-                    network=pod.metadata.namespace,
                     status=pod.status.phase
                 )
                 print(f"Updating container status: {update_container_status}")
