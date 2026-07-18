@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "snapshot-job"
+version = "0.1.0"
+description = "Kubernetes Job for building and pushing container snapshots"
+authors = ["Zim95 <shresthanamah@gmail.com>"]
+license = "Apache 2.0"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.12"
+browseterm-db = {git = "https://github.com/Zim95/browseterm-db.git", rev = "main"}
+browseterm-storage = {git = "https://github.com/Zim95/browseterm-storage.git", rev = "main"}
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
