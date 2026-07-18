@@ -11,7 +11,7 @@ This job runs as an isolated, privileged Kubernetes Job that:
 
 ## Environment Variables
 - `CONTAINER_ID`: Database ID of the container
-- `POD_NAME`: Name of the pod being snapshotted
+- `POD_NAME`: Name of the pod being snapshotted (container-maker sets this at runtime; set it manually only for standalone dev testing)
 - `NAMESPACE_NAME`: Kubernetes namespace
 - `REPO_NAME`: Docker registry repository name
 - `REPO_PASSWORD`: Docker registry password
@@ -20,7 +20,7 @@ This job runs as an isolated, privileged Kubernetes Job that:
 - `DB_USERNAME`: PostgreSQL username
 - `DB_PASSWORD`: PostgreSQL password
 - `DB_DATABASE`: PostgreSQL database name
-- `SNAPSHOT_DIR`: Snapshot directory
+- `SNAPSHOT_PATH`: Path to the filesystem snapshot tar file
 
 ## Security
 This job runs with privileged access to use Docker, but is isolated from user workloads and terminates after completion.
