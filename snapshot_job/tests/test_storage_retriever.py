@@ -1,96 +1,104 @@
 """
-Test the snapshot storage retrievers.
+Test build_storage_config() from main.py.
+
+The in-file SnapshotStorageRetriever / LocalSnapshotRetriever / MinioSnapshotRetriever
+classes were removed; storage resolution now goes through browseterm-storage directly.
+main.build_storage_config() maps the environment to the (StorageLayer, config-dict) that
+get_storage() expects.
 """
 # builtins
 from unittest import TestCase
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
 import os
-from pathlib import Path
 
 # modules
-from main import LocalSnapshotRetriever, MinioSnapshotRetriever
+import main
 from browseterm_storage import StorageLayer
 
 
-class TestLocalSnapshotRetriever(TestCase):
+class TestBuildStorageConfig(TestCase):
     """
-    Test LocalSnapshotRetriever.
-    Verifies that local snapshots return the path directly.
-    """
-
-    def setUp(self) -> None:
-        self.retriever = LocalSnapshotRetriever()
-        self.epoch = "1234567890"
-        self.snapshot_path = f"/mnt/snapshot/test-namespace/test-pod/fs_snapshot_{self.epoch}.tar.gz"
-
-    def test_get_snapshot_path_returns_same_path(self) -> None:
-        """
-        Test that LocalSnapshotRetriever returns the same path provided.
-        """
-        print('Test: test_get_snapshot_path_returns_same_path')
-        result = self.retriever.get_snapshot_path(self.snapshot_path)
-        self.assertEqual(result, self.snapshot_path)
-        print('Local snapshot path returned correctly.')
-
-
-class TestMinioSnapshotRetriever(TestCase):
-    """
-    Test MinioSnapshotRetriever.
-    Verifies that MinIO snapshots are downloaded correctly.
+    Test that build_storage_config() reads the environment and returns the
+    correct (StorageLayer, config-dict) tuple for each storage layer.
     """
 
-    def setUp(self) -> None:
-        self.retriever = MinioSnapshotRetriever()
-        self.epoch = "1234567890"
-        self.minio_path = f"test-namespace/test-pod/fs_snapshot_{self.epoch}.tar.gz"
-        self.expected_local_path = Path(f"/mnt/snapshot/test-namespace/test-pod/fs_snapshot_{self.epoch}.tar.gz")
+    def test_local_layer(self) -> None:
+        """
+        STORAGE_LAYER=local -> (StorageLayer.LOCAL, {'snapshot_dir': SNAPSHOT_DIR}).
+        """
+        print('Test: test_local_layer')
 
-    @patch('main.get_storage')
-    @patch('os.getenv')
-    @patch('pathlib.Path.write_bytes')
-    @patch('pathlib.Path.mkdir')
-    def test_download_from_minio(self, mock_mkdir, mock_write_bytes, mock_getenv, mock_get_storage) -> None:
+        with patch.dict(os.environ, {'STORAGE_LAYER': 'local'}, clear=False):
+            layer, config = main.build_storage_config()
+
+        self.assertEqual(layer, StorageLayer.LOCAL)
+        self.assertEqual(config, {'snapshot_dir': main.SNAPSHOT_DIR})
+        print('Local storage config built correctly.')
+
+    def test_default_layer_is_local(self) -> None:
         """
-        Test that MinioSnapshotRetriever downloads from MinIO and writes locally.
+        No STORAGE_LAYER set -> defaults to LOCAL.
         """
-        print('Test: test_download_from_minio')
-        
-        # Mock environment variables
-        mock_getenv.side_effect = lambda key, default=None: {
+        print('Test: test_default_layer_is_local')
+
+        env_without_layer = {k: v for k, v in os.environ.items() if k != 'STORAGE_LAYER'}
+        with patch.dict(os.environ, env_without_layer, clear=True):
+            layer, config = main.build_storage_config()
+
+        self.assertEqual(layer, StorageLayer.LOCAL)
+        self.assertEqual(config, {'snapshot_dir': main.SNAPSHOT_DIR})
+        print('Default storage layer is local.')
+
+    def test_minio_layer(self) -> None:
+        """
+        STORAGE_LAYER=minio -> (StorageLayer.MINIO, {minio config from MINIO_* env}).
+        """
+        print('Test: test_minio_layer')
+
+        minio_env = {
+            'STORAGE_LAYER': 'minio',
             'MINIO_ENDPOINT': 'minio:9000',
             'MINIO_ACCESS_KEY': 'test-access',
             'MINIO_SECRET_KEY': 'test-secret',
             'MINIO_BUCKET': 'snapshots',
-            'MINIO_SECURE': 'false',
-        }.get(key, default)
-        
-        # Mock storage
-        mock_storage = MagicMock()
-        mock_storage.read.return_value = b'fake tar data'
-        mock_get_storage.return_value = mock_storage
-        
-        # Execute
-        with patch('main.SNAPSHOT_DIR', '/mnt/snapshot'):
-            with patch('main.NAMESPACE_NAME', 'test-namespace'):
-                with patch('main.POD_NAME', 'test-pod'):
-                    result = self.retriever.get_snapshot_path(self.minio_path)
-        
-        # Verify storage was called with correct layer
-        mock_get_storage.assert_called_once_with(
-            StorageLayer.MINIO,
+            'MINIO_SECURE': 'true',
+        }
+        with patch.dict(os.environ, minio_env, clear=False):
+            layer, config = main.build_storage_config()
+
+        self.assertEqual(layer, StorageLayer.MINIO)
+        self.assertEqual(
+            config,
             {
                 'minio_endpoint': 'minio:9000',
                 'minio_access_key': 'test-access',
                 'minio_secret_key': 'test-secret',
                 'minio_bucket': 'snapshots',
-                'minio_secure': False,
-            }
+                'minio_secure': True,
+            },
         )
-        
-        # Verify read was called with minio path
-        mock_storage.read.assert_called_once_with(self.minio_path)
-        
-        print('MinIO snapshot downloaded correctly.')
+        print('MinIO storage config built correctly.')
+
+    def test_minio_secure_defaults_false(self) -> None:
+        """
+        minio_secure is False unless MINIO_SECURE == 'true' (case-insensitive).
+        """
+        print('Test: test_minio_secure_defaults_false')
+
+        minio_env = {
+            'STORAGE_LAYER': 'MINIO',  # also verifies the .lower() on STORAGE_LAYER
+            'MINIO_ENDPOINT': 'minio:9000',
+            'MINIO_ACCESS_KEY': 'test-access',
+            'MINIO_SECRET_KEY': 'test-secret',
+            'MINIO_BUCKET': 'snapshots',
+            'MINIO_SECURE': 'false',
+        }
+        with patch.dict(os.environ, minio_env, clear=False):
+            layer, config = main.build_storage_config()
+
+        self.assertEqual(layer, StorageLayer.MINIO)
+        self.assertFalse(config['minio_secure'])
+        print('MinIO secure flag defaults to False.')
 
 
 if __name__ == '__main__':

@@ -1,5 +1,6 @@
 """Database operations for updating saved image information."""
 import asyncio
+from datetime import datetime, timezone
 from typing import Optional
 
 from browseterm_db.operations.all_operations import ContainerOps
@@ -59,5 +60,50 @@ async def update_saved_image(
     
     except Exception as e:
         error_msg = f"Unexpected error updating database: {str(e)}"
+        print(error_msg)
+        return OperationResult(success=False, error=error_msg)
+
+
+async def update_save_status(
+    db_config: DBConfig,
+    container_id: str,
+    save_status: str,
+    saved_image: Optional[str] = None,
+    save_error: Optional[str] = None,
+    set_last_saved: bool = False,
+) -> OperationResult:
+    """
+    Update the container's save-flow state.
+
+    Always sets save_status and save_error (save_error=None clears any previous error);
+    optionally sets saved_image and last_saved_at. The container_save_status_change trigger
+    fires the NOTIFY that browseterm-server relays to the frontend over SSE.
+
+    :param save_status: one of SaveStatus values ("Pending"/"Running"/"Succeeded"/"Failed")
+    """
+    try:
+        if not container_id:
+            return OperationResult(success=False, error="Container ID is required")
+
+        data = {"save_status": save_status, "save_error": save_error}
+        if saved_image is not None:
+            data["saved_image"] = saved_image
+        if set_last_saved:
+            data["last_saved_at"] = datetime.now(timezone.utc)
+
+        container_ops = ContainerOps(db_config)
+        result = await asyncio.to_thread(
+            container_ops.update,
+            filters={"id": container_id},
+            data=data,
+        )
+        if result.success:
+            print(f"Updated save state: container {container_id} -> {save_status}")
+        else:
+            print(f"Failed to update save state: {result.error}")
+        return result
+
+    except Exception as e:
+        error_msg = f"Unexpected error updating save state: {str(e)}"
         print(error_msg)
         return OperationResult(success=False, error=error_msg)
