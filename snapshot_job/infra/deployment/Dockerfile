@@ -22,7 +22,7 @@ RUN curl -sSL https://install.python-poetry.org | python3 -
 ENV PATH="/root/.local/bin:${PATH}"
 
 # install dependencies
-RUN poetry install --no-root
+RUN poetry lock && poetry install --no-root
 
 # Use the entrypoint script
 ENTRYPOINT ["bash", "-c", "./infra/deployment/entrypoint.sh"]
