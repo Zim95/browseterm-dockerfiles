@@ -40,7 +40,6 @@ class TestSnapshotBuilder(TestCase):
         self.assertTrue(self.builder.build_dir.endswith("/test-namespace/test-pod/build"))
         print('Builder initialized correctly.')
 
-    @patch('src.snapshot_builder.asyncio.create_subprocess_shell')
     def test_run_command_success(self) -> None:
         """
         Test successful command execution.
@@ -60,7 +59,6 @@ class TestSnapshotBuilder(TestCase):
         asyncio.run(run_test())
         print('Command executed successfully.')
 
-    @patch('src.snapshot_builder.asyncio.create_subprocess_shell')
     def test_run_command_failure(self) -> None:
         """
         Test command execution failure.
