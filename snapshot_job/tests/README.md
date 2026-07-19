@@ -87,7 +87,10 @@ poetry run python -m unittest tests.test_integration_real_db.TestSnapshotJobWith
 
 ### Run ALL tests:
 ```bash
-poetry run python -m unittest discover tests/ -v
+# Run from the snapshot_job root. Use -t . so `tests` is treated as a package,
+# otherwise the relative import in test_integration.py (from .conftest) fails with
+# "attempted relative import with no known parent package".
+poetry run python -m unittest discover -t . -s tests -p "test_*.py" -v
 ```
 
 ### Run a specific test:

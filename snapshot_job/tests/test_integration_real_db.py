@@ -22,7 +22,7 @@ import tarfile
 
 # modules
 from src.snapshot_builder import SnapshotBuilder
-from browzeterm_db.common.config import TEST_MIGRATIONS_DIR
+from browseterm_db.common.config import TEST_MIGRATIONS_DIR
 from browseterm_db.migrations.migrator import Migrator
 from browseterm_db.operations.container_ops import ContainerOps
 from browseterm_db.operations.image_ops import ImageOps
