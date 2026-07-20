@@ -9,8 +9,8 @@ class SnapshotBuilder:
     """
     Builds and pushes Docker images from filesystem snapshots.
     
-    This class contains all the logic previously in SaveUtility that executed
-    Docker commands via kubectl exec into the snapshot sidecar.
+    Runs inside the snapshot Job: unpacks the filesystem snapshot, builds a Docker
+    image from it, and pushes it to the registry.
     """
     
     def __init__(

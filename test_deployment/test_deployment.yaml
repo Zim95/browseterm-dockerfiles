@@ -51,14 +51,6 @@ spec:
           mountPath: /mnt/snapshot
       # command or args can include a script to create the tar.gz when needed
 
-    - name: snapshot-sidecar
-      image: ${REPO_NAME}/snapshot_sidecar:latest
-      securityContext:
-        privileged: true
-      volumeMounts:
-        - name: snapshot-volume
-          mountPath: /mnt/snapshot
-
     - name: status-sidecar
       image: ${REPO_NAME}/status_sidecar:latest
       securityContext:
