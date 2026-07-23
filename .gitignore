@@ -1,2 +1,3 @@
 env.mk
 __pycache__/
+.venv/
