@@ -23,6 +23,9 @@ from src.config import (
 from src.db_ops import find_idle_running_containers, mark_hibernated
 from src.grpc_utils import GRPCUtils
 from src.k8s_secrets import read_cert_from_k8s_secret
+from src.logging_setup import get_logger, request_id_var
+
+logger = get_logger("reaper")
 
 
 def network_name_for(container_row: dict) -> str:
@@ -58,40 +61,46 @@ class Reaper:
         container_id = row["id"]
         net = network_name_for(row)
         try:
+            # gRPC metadata carries this reaper run's request_id so the save/delete it triggers are
+            # traceable back to the reaper run in the logs.
+            md = (("x-request-id", request_id_var.get()),)
             # 1. save (blocks until the snapshot Job finishes inside container-maker)
             await asyncio.to_thread(
                 self.stub.saveContainer,
                 GRPCSaveContainerRequest(container_id=container_id, network_name=net),
+                metadata=md,
             )
             # 2. delete the pod / container resources (Service is left so resume can re-route)
             await asyncio.to_thread(
                 self.stub.deleteContainer,
                 GRPCDeleteContainerRequest(container_id=container_id, network_name=net),
+                metadata=md,
             )
             # 3. mark HIBERNATED
             result = await mark_hibernated(DB_CONFIG, container_id)
             if not result.success:
                 raise RuntimeError(f"DB update failed: {result.error}")
             summary.hibernated += 1
-            print(f"[reaper] hibernated container {container_id}")
+            logger.info("hibernated container", extra={"container_id": container_id})
         except grpc.RpcError as e:
             summary.failed += 1
             msg = f"{container_id}: gRPC error {e.code()}: {e.details()}"
             summary.errors.append(msg)
-            print(f"[reaper] ERROR {msg}")
+            logger.error("hibernate failed (gRPC)", extra={"container_id": container_id}, exc_info=True)
         except Exception as e:  # isolate failures per container
             summary.failed += 1
             msg = f"{container_id}: {e}"
             summary.errors.append(msg)
-            print(f"[reaper] ERROR {msg}")
+            logger.error("hibernate failed", extra={"container_id": container_id}, exc_info=True)
 
     async def run(self) -> RunSummary:
         summary = RunSummary()
         idle = await find_idle_running_containers(DB_CONFIG, IDLE_THRESHOLD_SECONDS)
         summary.scanned = len(idle)
-        print(f"[reaper] found {summary.scanned} idle RUNNING containers "
-              f"(threshold={IDLE_THRESHOLD_SECONDS}s)")
+        logger.info("found idle running containers",
+                    extra={"count": summary.scanned, "threshold_seconds": IDLE_THRESHOLD_SECONDS})
         for row in idle:
             await self._hibernate_one(row, summary)
-        print(f"[reaper] run complete: {summary}")
+        logger.info("run complete",
+                    extra={"scanned": summary.scanned, "hibernated": summary.hibernated, "failed": summary.failed})
         return summary

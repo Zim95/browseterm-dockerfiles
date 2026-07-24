@@ -26,8 +26,8 @@ class TestReaperSweep(TestCase):
         async def run():
             reaper = self._build_reaper()
             calls = []
-            reaper.stub.saveContainer.side_effect = lambda req: calls.append(("save", req.container_id, req.network_name))
-            reaper.stub.deleteContainer.side_effect = lambda req: calls.append(("delete", req.container_id, req.network_name))
+            reaper.stub.saveContainer.side_effect = lambda req, **kw: calls.append(("save", req.container_id, req.network_name))
+            reaper.stub.deleteContainer.side_effect = lambda req, **kw: calls.append(("delete", req.container_id, req.network_name))
             with patch.object(reaper_mod, "find_idle_running_containers", return_value=rows), \
                  patch.object(reaper_mod, "mark_hibernated") as mock_hib:
                 mock_hib.return_value = MagicMock(success=True)
@@ -45,7 +45,7 @@ class TestReaperSweep(TestCase):
         async def run():
             reaper = self._build_reaper()
 
-            def save(req):
+            def save(req, **kw):
                 if req.container_id == "c1":
                     raise Exception("save boom")
             reaper.stub.saveContainer.side_effect = save
