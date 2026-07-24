@@ -4,6 +4,10 @@ import os
 import time
 from typing import Optional
 
+from src.common.logging_setup import get_logger
+
+logger = get_logger("snapshot_builder")
+
 
 class SnapshotBuilder:
     """
@@ -60,8 +64,8 @@ class SnapshotBuilder:
         :param timeout: Optional timeout in seconds
         :return: Command output
         """
-        print(f"Running command: {command}")
-        
+        logger.info("Running command", extra={"command": command, "container_id": self.container_id})
+
         process = await asyncio.create_subprocess_shell(
             command,
             stdout=asyncio.subprocess.PIPE,
@@ -96,7 +100,7 @@ class SnapshotBuilder:
                 f"-C {self.build_dir}/rootfs"
             )
             await self.run_command(untar_cmd)
-            print("✓ Filesystem snapshot unpacked")
+            logger.info("Filesystem snapshot unpacked", extra={"build_dir": self.build_dir})
         except Exception as e:
             raise Exception(f"Failed to unpack tar file: {e}")
     
@@ -114,8 +118,8 @@ class SnapshotBuilder:
             dockerfile_path = f"{self.build_dir}/rootfs/Dockerfile"
             with open(dockerfile_path, 'w') as f:
                 f.write(dockerfile_content)
-            
-            print("✓ Dockerfile created")
+
+            logger.info("Dockerfile created", extra={"dockerfile_path": dockerfile_path})
         except Exception as e:
             raise Exception(f"Failed to create Dockerfile: {e}")
     
@@ -139,7 +143,10 @@ class SnapshotBuilder:
         last_output = None
         for attempt in range(1, self.docker_build_max_retries + 1):
             try:
-                print(f"Building image (attempt {attempt}/{self.docker_build_max_retries})...")
+                logger.info(
+                    "Building image",
+                    extra={"image_name": image_name, "attempt": attempt, "max_retries": self.docker_build_max_retries},
+                )
                 output = await self.run_command(build_cmd, timeout=1500)  # 25 minutes
                 last_output = output
                 
@@ -154,23 +161,30 @@ class SnapshotBuilder:
                 )
                 
                 if old_format_success or buildkit_success:
-                    print(f"✓ Image built successfully: {image_name}")
+                    logger.info("Image built successfully", extra={"image_name": image_name})
                     return image_name
                 else:
                     # Build command ran but didn't produce success indicators
                     last_error = f"Build completed but no success indicators found. Output:\n{output[-500:]}"
                     if attempt < self.docker_build_max_retries:
                         delay = self.docker_build_retry_delay * (2 ** (attempt - 1))
-                        print(f"Build unclear (attempt {attempt}), retrying in {delay}s...")
+                        logger.warning(
+                            "Build unclear, retrying",
+                            extra={"image_name": image_name, "attempt": attempt, "delay": delay},
+                        )
                         await asyncio.sleep(delay)
                         continue
-                
+
             except Exception as e:
                 last_error = str(e)
-                print(f"Build error (attempt {attempt}): {str(e)[:200]}")
+                logger.error(
+                    "Build error",
+                    exc_info=True,
+                    extra={"image_name": image_name, "attempt": attempt},
+                )
                 if attempt < self.docker_build_max_retries:
                     delay = self.docker_build_retry_delay * (2 ** (attempt - 1))
-                    print(f"Retrying in {delay}s...")
+                    logger.warning("Retrying build", extra={"image_name": image_name, "delay": delay})
                     await asyncio.sleep(delay)
                     continue
         
@@ -185,7 +199,7 @@ class SnapshotBuilder:
         try:
             tag_cmd = f"docker image tag {image_name} {self.repo_name}/{image_name}"
             await self.run_command(tag_cmd)
-            print(f"✓ Image tagged: {self.repo_name}/{image_name}")
+            logger.info("Image tagged", extra={"image_name": f"{self.repo_name}/{image_name}"})
         except Exception as e:
             raise Exception(f"Failed to tag image: {e}")
     
@@ -197,24 +211,27 @@ class SnapshotBuilder:
         
         for attempt in range(1, self.docker_login_max_retries + 1):
             try:
-                print(f"Logging into Docker registry (attempt {attempt}/{self.docker_login_max_retries})...")
+                logger.info(
+                    "Logging into Docker registry",
+                    extra={"attempt": attempt, "max_retries": self.docker_login_max_retries},
+                )
                 output = await self.run_command(login_cmd, timeout=30)
-                
+
                 if "Login Succeeded" in output:
-                    print("✓ Docker registry login successful")
+                    logger.info("Docker registry login successful")
                     return
-                
+
                 # Check for retryable errors
                 if attempt < self.docker_login_max_retries:
                     delay = self.docker_login_retry_delay * (2 ** (attempt - 1))
-                    print(f"Login failed, retrying in {delay}s...")
+                    logger.warning("Login failed, retrying", extra={"attempt": attempt, "delay": delay})
                     await asyncio.sleep(delay)
                     continue
-                
+
             except Exception as e:
                 if attempt < self.docker_login_max_retries:
                     delay = self.docker_login_retry_delay * (2 ** (attempt - 1))
-                    print(f"Login error: {e}, retrying in {delay}s...")
+                    logger.warning("Login error, retrying", exc_info=True, extra={"attempt": attempt, "delay": delay})
                     await asyncio.sleep(delay)
                     continue
                 raise
@@ -229,11 +246,11 @@ class SnapshotBuilder:
         """
         try:
             push_cmd = f"docker image push {self.repo_name}/{image_name}"
-            print(f"Pushing image to registry...")
+            logger.info("Pushing image to registry", extra={"image_name": f"{self.repo_name}/{image_name}"})
             output = await self.run_command(push_cmd, timeout=1500)  # 25 minutes
-            
+
             if "Pushed" in output or "digest:" in output:
-                print(f"✓ Image pushed successfully: {self.repo_name}/{image_name}")
+                logger.info("Image pushed successfully", extra={"image_name": f"{self.repo_name}/{image_name}"})
             else:
                 raise Exception(f"Push may have failed: {output[-200:]}")
                 
@@ -252,8 +269,8 @@ class SnapshotBuilder:
             
             delete_cmd = f"docker rmi {local_image} {tagged_image}"
             await self.run_command(delete_cmd)
-            
-            print(f"✓ Local images deleted: {local_image}, {tagged_image}")
+
+            logger.info("Local images deleted", extra={"local_image": local_image, "tagged_image": tagged_image})
         except Exception as e:
             # Don't fail the job if cleanup fails
-            print(f"Warning: Failed to cleanup images: {e}")
+            logger.warning("Failed to cleanup images", exc_info=True)

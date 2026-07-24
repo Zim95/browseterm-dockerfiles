@@ -20,6 +20,9 @@ from browseterm_db.models.containers import SaveStatus
 from src.snapshot_builder import SnapshotBuilder
 from src.db_ops import update_save_status
 from src.config import DB_CONFIG, CONTAINER_ID, REPO_NAME, REPO_PASSWORD, SNAPSHOT_DIR, NAMESPACE_NAME, POD_NAME
+from src.common.logging_setup import configure_logging, get_logger, set_request_context
+
+logger = get_logger("main")
 
 # Storage path/key of the tar produced by container-maker (passed via env).
 SNAPSHOT_PATH = os.getenv('SNAPSHOT_PATH')
@@ -47,20 +50,23 @@ def build_storage_config():
 
 async def main() -> None:
     """Main entry point for the snapshot job."""
-    print(f"Starting snapshot job for container {CONTAINER_ID}")
+    logger.info(
+        "Starting snapshot job",
+        extra={"container_id": CONTAINER_ID, "pod_name": POD_NAME, "namespace_name": NAMESPACE_NAME},
+    )
 
     # Validate required environment variables
     if not CONTAINER_ID:
-        print("ERROR: CONTAINER_ID environment variable is required")
+        logger.error("CONTAINER_ID environment variable is required")
         sys.exit(1)
     if not REPO_NAME or not REPO_PASSWORD:
-        print("ERROR: REPO_NAME and REPO_PASSWORD environment variables are required")
+        logger.error("REPO_NAME and REPO_PASSWORD environment variables are required")
         sys.exit(1)
     if not NAMESPACE_NAME or not POD_NAME:
-        print("ERROR: NAMESPACE_NAME and POD_NAME environment variables are required")
+        logger.error("NAMESPACE_NAME and POD_NAME environment variables are required")
         sys.exit(1)
     if not SNAPSHOT_PATH:
-        print("ERROR: SNAPSHOT_PATH environment variable is required")
+        logger.error("SNAPSHOT_PATH environment variable is required")
         sys.exit(1)
 
     # Mark the save as RUNNING (also clears any previous error). This NOTIFYs the frontend.
@@ -72,7 +78,10 @@ async def main() -> None:
         storage = get_storage(storage_layer, storage_config)
         dest_dir = str(Path(SNAPSHOT_DIR) / NAMESPACE_NAME / POD_NAME)
         snapshot_tar_path = storage.localize(SNAPSHOT_PATH, dest_dir)
-        print(f"Snapshot localized to {snapshot_tar_path} (storage={storage_layer.value})")
+        logger.info(
+            "Snapshot localized",
+            extra={"snapshot_tar_path": snapshot_tar_path, "storage": storage_layer.value},
+        )
 
         builder = SnapshotBuilder(
             snapshot_path=snapshot_tar_path,
@@ -84,30 +93,30 @@ async def main() -> None:
             snapshot_dir=SNAPSHOT_DIR,
         )
 
-        print("Step 1: Unpacking snapshot tar file...")
+        logger.info("Step 1: Unpacking snapshot tar file")
         await builder.unpack_tar()
 
-        print("Step 2: Creating Dockerfile...")
+        logger.info("Step 2: Creating Dockerfile")
         await builder.create_dockerfile()
 
-        print("Step 3: Building Docker image...")
+        logger.info("Step 3: Building Docker image")
         image_name = await builder.build_image()
 
-        print("Step 4: Tagging image...")
+        logger.info("Step 4: Tagging image", extra={"image_name": image_name})
         await builder.tag_image(image_name)
 
-        print("Step 5: Logging into Docker registry...")
+        logger.info("Step 5: Logging into Docker registry")
         await builder.docker_login()
 
-        print("Step 6: Pushing image to registry...")
+        logger.info("Step 6: Pushing image to registry", extra={"image_name": image_name})
         await builder.docker_push(image_name)
 
-        print("Step 7: Cleaning up local images...")
+        logger.info("Step 7: Cleaning up local images", extra={"image_name": image_name})
         await builder.cleanup_images(image_name)
 
         # Record success: full pullable image ref + SUCCEEDED + last_saved_at.
         pushed_image = f"{REPO_NAME}/{image_name}"
-        print(f"Step 8: Recording success in DB (saved_image={pushed_image})")
+        logger.info("Step 8: Recording success in DB", extra={"saved_image": pushed_image})
         result = await update_save_status(
             DB_CONFIG,
             CONTAINER_ID,
@@ -118,14 +127,13 @@ async def main() -> None:
         if not result.success:
             raise Exception(f"Failed to update database: {result.error}")
 
-        print("✅ Snapshot job completed successfully!")
-        print(f"   Image: {pushed_image}")
-        print(f"   Container ID: {CONTAINER_ID}")
+        logger.info(
+            "Snapshot job completed successfully",
+            extra={"saved_image": pushed_image, "container_id": CONTAINER_ID},
+        )
 
     except Exception as e:
-        print(f"❌ Snapshot job failed: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error("Snapshot job failed", exc_info=True, extra={"container_id": CONTAINER_ID})
         # Best-effort: record FAILED so the frontend stops spinning and shows the error.
         try:
             await update_save_status(
@@ -134,15 +142,19 @@ async def main() -> None:
                 SaveStatus.FAILED.value,
                 save_error=str(e)[:1000],
             )
-        except Exception as db_e:
-            print(f"(also failed to record FAILED status: {db_e})")
+        except Exception:
+            logger.error("Also failed to record FAILED status", exc_info=True, extra={"container_id": CONTAINER_ID})
         sys.exit(1)
 
 
 if __name__ == "__main__":
+    # Structured logging + correlation id (container-maker injects REQUEST_ID as a Job env var).
+    configure_logging("snapshot-job")
+    set_request_context(request_id=os.getenv("REQUEST_ID"))
+
     # Graceful shutdown handlers
     def signal_handler(signum, frame):
-        print(f"\nReceived signal {signum}, shutting down...")
+        logger.warning("Received signal, shutting down", extra={"signal": signum})
         sys.exit(1)
 
     signal.signal(signal.SIGTERM, signal_handler)

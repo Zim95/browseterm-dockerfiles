@@ -7,6 +7,10 @@ from browseterm_db.operations.all_operations import ContainerOps
 from browseterm_db.operations import OperationResult
 from browseterm_db.common.config import DBConfig
 
+from src.common.logging_setup import get_logger
+
+logger = get_logger("db_ops")
+
 
 async def update_saved_image(
     db_config: DBConfig,
@@ -47,20 +51,26 @@ async def update_saved_image(
         )
         
         if result.success:
-            print(f"Successfully updated database: container {container_id} -> saved_image: {saved_image}")
+            logger.info(
+                "Successfully updated saved_image",
+                extra={"container_id": container_id, "saved_image": saved_image},
+            )
         else:
-            print(f"Failed to update database: {result.error}")
-        
+            logger.error(
+                "Failed to update saved_image",
+                extra={"container_id": container_id, "error": result.error},
+            )
+
         return result
-        
+
     except ValueError as e:
         error_msg = f"Validation error: {str(e)}"
-        print(error_msg)
+        logger.error("Validation error updating saved_image", exc_info=True, extra={"container_id": container_id})
         return OperationResult(success=False, error=error_msg)
-    
+
     except Exception as e:
         error_msg = f"Unexpected error updating database: {str(e)}"
-        print(error_msg)
+        logger.error("Unexpected error updating saved_image", exc_info=True, extra={"container_id": container_id})
         return OperationResult(success=False, error=error_msg)
 
 
@@ -98,12 +108,18 @@ async def update_save_status(
             data=data,
         )
         if result.success:
-            print(f"Updated save state: container {container_id} -> {save_status}")
+            logger.info(
+                "Updated save state",
+                extra={"container_id": container_id, "save_status": save_status},
+            )
         else:
-            print(f"Failed to update save state: {result.error}")
+            logger.error(
+                "Failed to update save state",
+                extra={"container_id": container_id, "error": result.error},
+            )
         return result
 
     except Exception as e:
         error_msg = f"Unexpected error updating save state: {str(e)}"
-        print(error_msg)
+        logger.error("Unexpected error updating save state", exc_info=True, extra={"container_id": container_id})
         return OperationResult(success=False, error=error_msg)

@@ -7,11 +7,15 @@ from typing import Callable
 from kubernetes_asyncio import client, config, watch
 
 # module
+from src.common.logging_setup import get_logger
 from src.db_ops import UpdateContainerStatus
 from src.config import CONTAINER_ID
 
 # browseterm-db
 from browseterm_db.operations import OperationResult
+
+
+logger = get_logger("pod_watcher")
 
 
 async def get_pod_info() -> tuple[str, str]:
@@ -35,14 +39,21 @@ async def watch_pod_status(callback: Callable) -> None:
     # Load in-cluster configuration
     try:
         config.load_incluster_config()
-        print("Loaded in-cluster configuration")
+        logger.info("Loaded in-cluster configuration", extra={"container_id": CONTAINER_ID})
     except Exception as e:
-        print(f"Failed to load in-cluster config, trying kubeconfig: {e}")
+        logger.warning(
+            "Failed to load in-cluster config, trying kubeconfig: %s", e,
+            exc_info=True,
+            extra={"container_id": CONTAINER_ID},
+        )
         await config.load_kube_config()
 
     # Get current pod information
     pod_name, namespace = await get_pod_info()
-    print(f"Watching pod: {pod_name} in namespace: {namespace}")
+    logger.info(
+        "Watching pod: %s in namespace: %s", pod_name, namespace,
+        extra={"container_id": CONTAINER_ID, "pod_name": pod_name, "namespace": namespace},
+    )
 
     # Create API client
     v1: client.CoreV1Api = client.CoreV1Api()
@@ -53,7 +64,10 @@ async def watch_pod_status(callback: Callable) -> None:
         try:
             # Watch the specific pod
             w: watch.Watch = watch.Watch()
-            print(f"Starting watch stream for pod {pod_name}...")
+            logger.info(
+                "Starting watch stream for pod %s...", pod_name,
+                extra={"container_id": CONTAINER_ID, "pod_name": pod_name, "namespace": namespace},
+            )
             async for event in w.stream(
                 func=v1.list_namespaced_pod,
                 namespace=namespace,
@@ -65,17 +79,48 @@ async def watch_pod_status(callback: Callable) -> None:
                     container_id=CONTAINER_ID,
                     status=pod.status.phase
                 )
-                print(f"Updating container status: {update_container_status}")
+                logger.info(
+                    "Updating container status: %s", update_container_status,
+                    extra={
+                        "container_id": CONTAINER_ID,
+                        "pod_name": pod_name,
+                        "namespace": namespace,
+                        "status": pod.status.phase,
+                    },
+                )
                 result: OperationResult = await callback(update_container_status)
                 if not result.success:
-                    print(f"Error updating container status: {result.error}")
-                print(f"Container:  status updated")
+                    logger.error(
+                        "Error updating container status: %s", result.error,
+                        extra={
+                            "container_id": CONTAINER_ID,
+                            "pod_name": pod_name,
+                            "namespace": namespace,
+                            "status": pod.status.phase,
+                        },
+                    )
+                logger.info(
+                    "Container status updated",
+                    extra={
+                        "container_id": CONTAINER_ID,
+                        "pod_name": pod_name,
+                        "namespace": namespace,
+                        "status": pod.status.phase,
+                    },
+                )
         except asyncio.CancelledError:
-            print("Watch task cancelled, shutting down...")
+            logger.info("Watch task cancelled, shutting down...", extra={"container_id": CONTAINER_ID})
             break
         except Exception as e:
-            print(f"Error watching pod: {e}")
-            print(f"Retrying in {retry_delay} seconds...")
+            logger.error(
+                "Error watching pod: %s", e,
+                exc_info=True,
+                extra={"container_id": CONTAINER_ID, "pod_name": pod_name, "namespace": namespace},
+            )
+            logger.info(
+                "Retrying in %s seconds...", retry_delay,
+                extra={"container_id": CONTAINER_ID},
+            )
             await asyncio.sleep(retry_delay)
             continue
     await v1.api_client.close()
