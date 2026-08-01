@@ -1,6 +1,0 @@
-.venv/
-__pycache__/
-*.pyc
-poetry.lock
-tests/
-.dockerignore
