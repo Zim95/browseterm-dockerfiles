@@ -48,5 +48,14 @@ exec "$@"
 SUDOSHIM
 chmod +x /usr/local/bin/sudo
 
+# Ubuntu's sshd_config default is "PermitRootLogin prohibit-password", which blocks
+# *password* auth for any UID-0 account regardless of username - and the app's
+# socket-ssh client authenticates by password only (no key). Since the login user is
+# now a UID-0 alias (see above), that default would reject every connection. This
+# account's root-ness is already confined to its own gVisor-sandboxed pod (see the
+# security note above), so allowing its own password login is consistent with that
+# model - explicitly override the default.
+echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+
 # Start SSH server
 /usr/sbin/sshd -D
